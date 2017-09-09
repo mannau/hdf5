@@ -428,8 +428,8 @@ precision (detected_t *d)
     _buf = (char*)HDmalloc(sizeof(TYPE) + align_g[NELMTS(align_g) - 1]);	      \
     if(H5SETJMP(jbuf_g)) _ano++;					      \
     if(_ano < NELMTS(align_g)) {					      \
-	*((TYPE*)(_buf+align_g[_ano])) = _val; /*possible SIGBUS or SEGSEGV*/ \
-	_val2 = *((TYPE*)(_buf+align_g[_ano]));	/*possible SIGBUS or SEGSEGV*/\
+      memcpy(_buf+align_g[_ano], &_val, sizeof(TYPE));         \
+      memcpy(&_val2, _buf+align_g[_ano], sizeof(TYPE));                     \
 	/* Cray Check: This section helps detect alignment on Cray's */	      \
         /*              vector machines (like the SV1) which mask off */      \
 	/*              pointer values when pointing to non-word aligned */   \
@@ -441,7 +441,7 @@ precision (detected_t *d)
 	    HDmemcpy(_buf+align_g[_ano]+(INFO.size-((INFO.offset+INFO.precision)/8)),((char *)&_val)+(INFO.size-((INFO.offset+INFO.precision)/8)),(size_t)(INFO.precision/8)); \
 	else /* Little-Endian */					      \
 	    HDmemcpy(_buf+align_g[_ano]+(INFO.offset/8),((char *)&_val)+(INFO.offset/8),(size_t)(INFO.precision/8)); \
-	_val2 = *((TYPE*)(_buf+align_g[_ano]));				      \
+	memcpy(&_val2, _buf+align_g[_ano], sizeof(TYPE)); \
     H5_GCC_DIAG_OFF(float-equal)					      \
 	if(_val!=_val2)							      \
 	    H5LONGJMP(jbuf_g, 1);		        		      \
@@ -1665,6 +1665,14 @@ detect_alignments(void)
  */
 static int verify_signal_handlers(int signum, void (*handler)(int))
 {						      
+  /* Under Address Sanitizer, don't raise any signals. */
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+  return 0;
+#endif
+#endif
+  
+    
     void	(*save_handler)(int) = HDsignal(signum, handler);    
     volatile int i, val;
     int ntries=5;
